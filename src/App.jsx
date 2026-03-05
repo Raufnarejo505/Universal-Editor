@@ -1,155 +1,252 @@
-import { useEditor, EditorContent } from '@tiptap/react';
-import { StarterKit } from '@tiptap/starter-kit';
-import { TableKit } from '@tiptap/extension-table';
-import { BlockIdExtension } from './components/BlockIdExtension';
-import { MenuBar } from './components/MenuBar';
-import { StatusBar } from './components/StatusBar';
-import { debounce } from 'lodash';
-import html2pdf from 'html2pdf.js';
-import { useState, useEffect, useCallback, useRef } from 'react';
-import './App.css';
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import UniqueID from '@tiptap/extension-unique-id'
+import Link from '@tiptap/extension-link'
+
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableCell } from '@tiptap/extension-table-cell'
+import { TableHeader } from '@tiptap/extension-table-header'
+
+import { MenuBar } from './components/MenuBar'
+import StatusBar from './components/StatusBar'
+import LinkModal from './components/LinkModal'
+import PreviewModal from './components/PreviewModal'
+
+import { debounce } from 'lodash'
+// html2pdf imported in PreviewModal
+
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+
+import './App.css'
+
+const STORAGE_KEY = 'tiptap_editor_v5_stable'
+
+const formatTimestamp = (date) => {
+  const d = date || new Date()
+  const pad = (n) => n.toString().padStart(2, '0')
+  let hours = d.getHours()
+  const ampm = hours >= 12 ? 'pm' : 'am'
+  hours = hours % 12
+  hours = hours ? hours : 12
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} , ${hours}:${pad(d.getMinutes())} ${ampm}`
+}
+
+const saveToStorage = (updatedVersions) => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedVersions))
+}
 
 const App = () => {
-  const editorRef = useRef(null); // ✅ PDF Export Reference
-  const [editor, setEditor] = useState(null);
-  const [versions, setVersions] = useState([]);
-  const [currentVersionId, setCurrentVersionId] = useState('v1');
-  const [isSaving, setIsSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState(null);
-  // ADD THESE LINES (top of component):
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
+  const editorRef = useRef(null)
+  const isInitialized = useRef(false)
 
-  // Debounced autosave (2s)
+  const [versions, setVersions] = useState([])
+  const [currentVersionId, setCurrentVersionId] = useState('v1')
+  const [isSaving, setIsSaving] = useState(false)
+  const [lastSaved, setLastSaved] = useState(null)
+  const [blockCount, setBlockCount] = useState(0)
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
+  const [linkModalInitialUrl, setLinkModalInitialUrl] = useState('')
+  const [profile, setProfile] = useState('Contract')
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false)
+
+  /* ---------------- EDITOR CONFIG ---------------- */
+
+  const extensions = useMemo(() => [
+    StarterKit,
+    Link.configure({ openOnClick: true }),
+    UniqueID.configure({
+      types: ['heading', 'paragraph', 'bulletList', 'orderedList', 'table'],
+      attributeName: 'block-id'
+    }),
+    Table.configure({ resizable: true }),
+    TableRow,
+    TableHeader,
+    TableCell
+  ], [])
+
+  const editor = useEditor({
+    extensions,
+    editorProps: {
+      attributes: { class: 'tiptap' }
+    }
+  })
+
+  /* ---------------- SAVE SYSTEM ---------------- */
+
   const debouncedSave = useCallback(
-    debounce((json) => {
-      setIsSaving(true);
+    debounce((json, vId) => {
+      setIsSaving(true)
       setVersions(prev => {
         const updated = prev.map(v =>
-          v.id === currentVersionId
-            ? { ...v, json, timestamp: new Date() }
+          v.id === vId
+            ? { ...v, json, timestamp: formatTimestamp(new Date()), isFormatted: true }
             : v
-        );
-        localStorage.setItem('editorVersions', JSON.stringify(updated));
-        setLastSaved(new Date());
-        setTimeout(() => setIsSaving(false), 1000);
-        return updated;
-      });
+        )
+        saveToStorage(updated)
+        setLastSaved(new Date())
+        setTimeout(() => setIsSaving(false), 800)
+        return updated
+      })
     }, 2000),
-    [currentVersionId]
-  );
+    []
+  )
 
-  // ✅ PDF EXPORT FUNCTION
-  const exportPDF = useCallback(() => {
-    if (!editor || !editorRef.current) return;
+  useEffect(() => {
+    if (!editor) return
 
-    const element = editorRef.current;
-    const opt = {
-      margin: 20,
-      filename: `AI-LAW-Document-v${currentVersionId}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-
-    html2pdf().set(opt).from(element).save();
-  }, [editor, currentVersionId]);
-
-  const manualSave = () => {
-    if (editor) {
-      debouncedSave.flush()(editor.getJSON());
+    const handleUpdate = () => {
+      // Pass the CURRENT version ID into the debounced save
+      debouncedSave(editor.getJSON(), currentVersionId)
     }
-  };
 
-  const createNewVersion = () => {
-    if (!editor) return;
-    const newId = `v${versions.length + 1}`;
+    editor.on('update', handleUpdate)
+    return () => {
+      editor.off('update', handleUpdate)
+      debouncedSave.cancel()
+    }
+  }, [editor, currentVersionId, debouncedSave])
+
+  const manualSave = useCallback(() => {
+    if (!editor) return
+    debouncedSave.cancel()
+
+    setIsSaving(true)
+    const json = editor.getJSON()
+
+    setVersions(prev => {
+      const updated = prev.map(v =>
+        v.id === currentVersionId
+          ? { ...v, json, timestamp: formatTimestamp(new Date()), isFormatted: true }
+          : v
+      )
+      saveToStorage(updated)
+      setLastSaved(new Date())
+      setTimeout(() => setIsSaving(false), 800)
+      return updated
+    })
+  }, [editor, currentVersionId, debouncedSave])
+
+  /* ---------------- VERSION CONTROL ---------------- */
+
+  const createNewVersion = useCallback(() => {
+    if (!editor) return
+    const versionNumber = versions.length + 1
+    const newId = `v${versionNumber}`
+    const json = editor.getJSON()
+
     const newVersion = {
       id: newId,
-      json: editor.getJSON(),
-      timestamp: new Date()
-    };
-    setVersions(prev => [...prev, newVersion]);
-    setCurrentVersionId(newId);
-    localStorage.setItem('editorVersions', JSON.stringify([...versions, newVersion]));
-  };
-
-  const loadVersion = (versionId) => {
-    const version = versions.find(v => v.id === versionId);
-    if (version && editor) {
-      editor.commands.setContent(version.json, false);
-      setCurrentVersionId(versionId);
+      json: json,
+      timestamp: formatTimestamp(new Date()),
+      isFormatted: true
     }
-  };
 
-  // Load saved versions on mount
+    const updated = [...versions, newVersion]
+    setVersions(updated)
+    setCurrentVersionId(newId)
+    saveToStorage(updated)
+  }, [editor, versions.length])
+
+  const loadVersion = useCallback((versionId) => {
+    const version = versions.find(v => v.id === versionId)
+    if (version && editor) {
+      editor.commands.setContent(version.json, false)
+      setCurrentVersionId(versionId)
+    }
+  }, [editor, versions])
+
+  /* ---------------- KEYBOARD SHORTCUTS ---------------- */
+
   useEffect(() => {
-    const savedVersions = JSON.parse(localStorage.getItem('editorVersions') || '[]');
-    if (savedVersions.length === 0) {
+    if (!editor) return
+    const handleKeyDown = (e) => {
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && e.key === 's') {
+        e.preventDefault()
+        manualSave()
+      }
+      if (mod && e.shiftKey && e.key === 'V') {
+        e.preventDefault()
+        createNewVersion()
+      }
+      if (mod && e.key === 'p') {
+        e.preventDefault()
+        setIsPreviewModalOpen(true)
+      }
+      if (mod && e.key === 'k') {
+        e.preventDefault()
+        setLinkModalInitialUrl(editor.getAttributes('link').href || '')
+        setIsLinkModalOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [editor, manualSave, createNewVersion])
+
+  /* ---------------- STATS ---------------- */
+
+  const text = editor?.getText() || ''
+  const wordCount = text.split(/\s+/).filter(Boolean).length || 0
+  const charCount = text.length || 0
+
+  useEffect(() => {
+    if (!editor) return
+    const updateBlockCount = () => {
+      let count = 0
+      editor.state.doc.descendants(node => {
+        if (node.attrs?.['block-id']) count++
+      })
+      setBlockCount(count)
+    }
+    updateBlockCount()
+    editor.on('update', updateBlockCount)
+    return () => editor.off('update', updateBlockCount)
+  }, [editor])
+
+  /* ---------------- LOAD SAVED VERSIONS ---------------- */
+
+  useEffect(() => {
+    if (!editor || isInitialized.current) return
+
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    if (saved.length > 0) {
+      setVersions(saved)
+      const lastVersion = saved[saved.length - 1]
+      setCurrentVersionId(lastVersion.id)
+      editor.commands.setContent(lastVersion.json, false)
+    } else {
+      const initialContent = {
+        type: "doc",
+        content: [
+          { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "AI Law Document Example" }] },
+          { type: "paragraph", content: [{ type: "text", text: "Testing versioning, block IDs and table structure." }] }
+        ]
+      }
       const initialVersion = {
         id: 'v1',
-        json: {
-          type: 'doc',
-          content: [{
-            type: 'paragraph',
-            content: [{ type: 'text', text: 'Start editing your AI-LAW document... Autosave every 2s! Tables work with TableKit!' }]
-          }]
-        },
-        timestamp: new Date()
-      };
-      savedVersions.push(initialVersion);
-      localStorage.setItem('editorVersions', JSON.stringify(savedVersions));
-    }
-    setVersions(savedVersions);
-    setCurrentVersionId(savedVersions[0]?.id || 'v1');
-  }, []);
-
-  const actualEditor = useEditor({
-    extensions: [
-      StarterKit,
-      TableKit.configure({ resizable: true }),
-      BlockIdExtension
-    ],
-    content: 'Loading...',
-    editorProps: {
-      attributes: {
-        class: 'tiptap',
-      },
-    },
-    onUpdate: ({ editor: ed }) => {
-      debouncedSave(ed.getJSON());
-    },
-  });
-
-  useEffect(() => {
-    setEditor(actualEditor);
-  }, [actualEditor]);
-
-  const wordCount = editor ? editor.getText().split(/\s+/).filter(Boolean).length : 0;
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-        switch (e.key) {
-          case 's':
-            e.preventDefault();
-            manualSave();
-            break;
-          case 'z':
-            editor?.chain().focus().undo().run();
-            break;
-        }
-      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') {
-        editor?.chain().focus().redo().run();
+        json: initialContent,
+        timestamp: formatTimestamp(new Date()),
+        isFormatted: true
       }
-    };
+      setVersions([initialVersion])
+      setCurrentVersionId('v1')
+      editor.commands.setContent(initialContent, false)
+      saveToStorage([initialVersion])
+    }
+    isInitialized.current = true
+  }, [editor])
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [editor, manualSave]);
+  if (!editor) return <div className="loading">Loading AI-LAW Editor...</div>
 
-  if (!editor) return <div className="loading">Loading AI-LAW Editor...</div>;
+  const handleLinkSave = (url) => {
+    if (url) {
+      editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+    } else {
+      editor.chain().focus().extendMarkRange('link').unsetLink().run()
+    }
+    setIsLinkModalOpen(false)
+  }
 
   return (
     <div className="editor-wrapper">
@@ -160,37 +257,40 @@ const App = () => {
         currentVersion={currentVersionId}
         onLoadVersion={loadVersion}
         versions={versions}
-        onExportPDF={exportPDF}  // ✅ PASSED TO MENUBAR
-        isDarkMode={isDarkMode}
-        onToggleDarkMode={toggleDarkMode}
+        onOpenLinkModal={() => {
+          setLinkModalInitialUrl(editor.getAttributes('link').href || '')
+          setIsLinkModalOpen(true)
+        }}
+        profile={profile}
+        onProfileChange={setProfile}
+        onOpenPreview={() => setIsPreviewModalOpen(true)}
       />
-
-      {/* ✅ PDF EXPORT WRAPPER */}
       <div ref={editorRef} className="pdf-export-wrapper">
         <EditorContent editor={editor} />
       </div>
-
       <StatusBar
         wordCount={wordCount}
+        charCount={charCount}
+        blockCount={blockCount}
         lastSaved={lastSaved}
         isSaving={isSaving}
+        profile={profile}
+      />
+      <LinkModal
+        isOpen={isLinkModalOpen}
+        onClose={() => setIsLinkModalOpen(false)}
+        initialUrl={linkModalInitialUrl}
+        onSave={handleLinkSave}
+      />
+
+      <PreviewModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        editor={editor}
+        versionId={currentVersionId}
       />
     </div>
+  )
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-  );
-};
-
-export default App;
+export default App

@@ -308,8 +308,6 @@ const App = () => {
           setLinkModalInitialUrl(editor.getAttributes('link').href || '')
           setIsLinkModalOpen(true)
         }}
-        profile={profile}
-        onProfileChange={setProfile}
         onOpenPreview={() => setIsPreviewModalOpen(true)}
       />
       <div ref={editorRef} className="pdf-export-wrapper">
@@ -322,6 +320,7 @@ const App = () => {
         lastSaved={lastSaved}
         isSaving={isSaving}
         profile={profile}
+        onProfileChange={setProfile}
       />
       <LinkModal
         isOpen={isLinkModalOpen}
@@ -337,14 +336,16 @@ const App = () => {
         versionId={currentVersionId}
       />
 
-      {isDiffMode && (
-        <SideBySideViewer
-          oldVersion={diffOldVersion}
-          newVersion={diffNewVersion}
-          onClose={() => setIsDiffMode(false)}
-        />
-      )}
-    </div>
+      {
+        isDiffMode && (
+          <SideBySideViewer
+            oldVersion={diffOldVersion}
+            newVersion={diffNewVersion}
+            onClose={() => setIsDiffMode(false)}
+          />
+        )
+      }
+    </div >
   )
 }
 

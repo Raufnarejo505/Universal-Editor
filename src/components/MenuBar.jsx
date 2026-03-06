@@ -46,15 +46,6 @@ export const MenuBar = ({
                     ))}
                 </select>
 
-                <select
-                    value={profile}
-                    onChange={(e) => onProfileChange(e.target.value)}
-                    className="version-select profile-select"
-                >
-                    <option value="Contract">Profile: Contract</option>
-                    <option value="SOP">Profile: SOP</option>
-                </select>
-
                 {/* PDF & WORD & PRINT EXPORT */}
                 <button
                     type="button"

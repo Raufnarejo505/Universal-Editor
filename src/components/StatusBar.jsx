@@ -1,6 +1,6 @@
 import React from 'react';
 
-const StatusBar = ({ wordCount, charCount = 0, blockCount = 0, lastSaved, isSaving, profile = "Contract" }) => {
+const StatusBar = ({ wordCount, charCount = 0, blockCount = 0, lastSaved, isSaving, profile = "Contract", onProfileChange }) => {
     return (
         <div className="status-bar">
             <div className="status-left">
@@ -10,9 +10,14 @@ const StatusBar = ({ wordCount, charCount = 0, blockCount = 0, lastSaved, isSavi
             </div>
 
             <div className="status-center">
-                <span className={`profile-badge ${profile.toLowerCase()}`}>
-                    {profile}
-                </span>
+                <select
+                    value={profile}
+                    onChange={(e) => onProfileChange(e.target.value)}
+                    className="version-select profile-select-status"
+                >
+                    <option value="Contract">Profile: Contract</option>
+                    <option value="SOP">Profile: SOP</option>
+                </select>
             </div>
 
             <div className="status-right">

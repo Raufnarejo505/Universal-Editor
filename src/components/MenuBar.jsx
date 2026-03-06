@@ -146,21 +146,39 @@ export const MenuBar = ({
                     Insert URL
                 </button>
 
-                {/* DIFF VIEWER */}
-                <button
-                    onClick={() => {
-
-                        if (versions.length < 2) return
-
-                        const last = versions[versions.length - 1]
-                        const prev = versions[versions.length - 2]
-
-                        onCompare(prev.id, last.id)
-
-                    }}
-                >
-                    Compare Last Versions
-                </button>
+                {/* DIFF VIEWER V2 */}
+                <div className="compare-controls">
+                    <select
+                        id="compareV1"
+                        className="version-select"
+                        defaultValue={versions[versions.length - 2]?.id || versions[0]?.id}
+                    >
+                        {versions.map(v => (
+                            <option key={v.id} value={v.id}>Base: {v.id}</option>
+                        ))}
+                    </select>
+                    <span className="compare-vs">vs</span>
+                    <select
+                        id="compareV2"
+                        className="version-select"
+                        defaultValue={versions[versions.length - 1]?.id}
+                    >
+                        {versions.map(v => (
+                            <option key={v.id} value={v.id}>Target: {v.id}</option>
+                        ))}
+                    </select>
+                    <button
+                        type="button"
+                        className="compare-btn"
+                        onClick={() => {
+                            const v1 = document.getElementById('compareV1').value;
+                            const v2 = document.getElementById('compareV2').value;
+                            onCompare(v1, v2);
+                        }}
+                    >
+                        Compare
+                    </button>
+                </div>
 
 
 

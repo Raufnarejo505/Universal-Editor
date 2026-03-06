@@ -281,11 +281,12 @@ const App = () => {
   /* ---------------- DIFF VIEWER ---------------- */
 
   const compareTwoVersions = (v1, v2) => {
-    if (!versions || versions.length < 2) return
+    if (!versions || versions.length < 1) return
 
     const version1 = versions.find(v => v.id === v1)
     const version2 = versions.find(v => v.id === v2)
 
+    // Fallback: If only one version is selected, or same version, we might just show it or error
     if (!version1 || !version2) return
 
     setDiffOldVersion(version1)

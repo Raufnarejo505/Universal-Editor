@@ -28,16 +28,31 @@ export const generateDocumentDiff = (oldJson, newJson) => {
 
     const diffResult = [];
 
-    // 1. Process new document content (handles unchanged, modified, and added blocks)
+    // 1. Build a list of all unique block-ids in order of appearance in the OLD document
+    const oldOrder = oldContent.filter(n => n.attrs?.['block-id']).map(n => n.attrs['block-id']);
+
+    // 2. Process new document content
     newContent.forEach(newNode => {
         const blockId = newNode.attrs ? newNode.attrs['block-id'] : null;
 
-        if (newNode.type === 'table') {
-            // Tables don't always have block-ids, but we handle them specialized
-            // We'll try to find a matching old table by index for simplicity if no block-id exists
-            // This is a naive table matching. A robust version would match by proximity or block-id if tables are allowed them.
-            const oldNode = blockId ? oldMap.get(blockId) : oldContent.find(n => n.type === 'table' && JSON.stringify(n) !== JSON.stringify(newNode));
+        // Find which old blocks were BEFORE this block but haven't been processed yet
+        if (blockId) {
+            const currentIndex = oldOrder.indexOf(blockId);
+            if (currentIndex !== -1) {
+                // All blocks in oldOrder before this index that are still in oldMap are removals that happened BEFORE this block
+                const previousRemovals = oldOrder.slice(0, currentIndex);
+                previousRemovals.forEach(pid => {
+                    const removedNode = oldMap.get(pid);
+                    if (removedNode) {
+                        diffResult.push({ ...removedNode, diffStatus: 'removed' });
+                        oldMap.delete(pid);
+                    }
+                });
+            }
+        }
 
+        if (newNode.type === 'table') {
+            const oldNode = blockId ? oldMap.get(blockId) : oldContent.find(n => n.type === 'table' && JSON.stringify(n) !== JSON.stringify(newNode));
             if (oldNode) {
                 const tableDiff = compareTableNodes(oldNode, newNode);
                 diffResult.push(tableDiff.isChanged ? { ...tableDiff.node, diffStatus: 'modified' } : newNode);
@@ -48,26 +63,14 @@ export const generateDocumentDiff = (oldJson, newJson) => {
         }
         else if (blockId) {
             const oldNode = oldMap.get(blockId);
-
             if (oldNode) {
-                // Block exists in both. Compare them.
                 const diff = compareBlocks(oldNode, newNode);
-
-                if (diff.isChanged) {
-                    diffResult.push({ ...diff.node, diffStatus: 'modified' });
-                } else {
-                    diffResult.push(newNode); // unchanged
-                }
-
-                // We've processed this old node
+                diffResult.push(diff.isChanged ? { ...diff.node, diffStatus: 'modified' } : newNode);
                 oldMap.delete(blockId);
             } else {
-                // Block is in new, but not in old
                 diffResult.push({ ...newNode, diffStatus: 'added' });
             }
         } else {
-            // Node has no blockId (e.g., raw text row or unconfigured extensions).
-            // Default to seeing if an exact match exists.
             const exactMatch = oldContent.find(n => JSON.stringify(n) === JSON.stringify(newNode));
             if (exactMatch) {
                 diffResult.push(newNode);
@@ -77,10 +80,8 @@ export const generateDocumentDiff = (oldJson, newJson) => {
         }
     });
 
-    // 2. Process remaining old content (these are removed blocks)
-    // We insert them at the end of the document, or ideally close to where they were.
-    // For simplicity, we append them at the end, but UI will show them as removed.
-    oldMap.forEach((oldNode, blockId) => {
+    // 3. Process remaining old content (these were at the end of the old doc)
+    oldMap.forEach((oldNode) => {
         diffResult.push({ ...oldNode, diffStatus: 'removed' });
     });
 

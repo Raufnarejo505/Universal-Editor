@@ -94,6 +94,35 @@ body {
   cursor: pointer;
 }
 
+.compare-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: #f1f5f9;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.compare-vs {
+  font-size: 12px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.compare-btn {
+  background: #3b82f6 !important;
+  color: white !important;
+  border-color: #2563eb !important;
+  padding: 8px 16px !important;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+
 /* Editor */
 .tiptap {
   background: white !important;
@@ -482,8 +511,7 @@ body {
 
   /* Modals on mobile */
   .link-modal,
-  .preview-modal,
-  .sbs-modal {
+  .preview-modal {
     width: 95% !important;
     max-width: 95% !important;
     height: auto;

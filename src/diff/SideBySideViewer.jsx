@@ -19,18 +19,25 @@ const DiffNodeRenderer = ({ node }) => {
         return <span className={className}>{text}</span>;
     }
 
-    // 2. Specialized Word-Level Diff Nodes (from BlockComparator)
+    // 2. Specialized Word-Level Diff Nodes (Word parts inside a block)
+    // If it's a diff part (no type, just a value/added/removed), render as span
     if (isDiffContainer && diffs) {
-        return (
-            <span className={className}>
-                {diffs.map((part, idx) => {
-                    let wordClass = 'diff-word';
-                    if (part.added) wordClass += ' diff-word-added';
-                    if (part.removed) wordClass += ' diff-word-removed';
-                    return <span key={idx} className={wordClass}>{part.value}</span>;
-                })}
-            </span>
-        );
+        const renderDiffContent = () => diffs.map((part, idx) => {
+            let wordClass = 'diff-word';
+            if (part.added) wordClass += ' diff-word-added';
+            if (part.removed) wordClass += ' diff-word-removed';
+            return <span key={idx} className={wordClass}>{part.value}</span>;
+        });
+
+        // We wrap the diff content in the original block type
+        switch (type) {
+            case 'paragraph': return <p className={className}>{renderDiffContent()}</p>;
+            case 'heading': return React.createElement(`h${attrs?.level || 1}`, { className }, renderDiffContent());
+            case 'bulletList': return <ul className={className}>{renderDiffContent()}</ul>;
+            case 'orderedList': return <ol className={className}>{renderDiffContent()}</ol>;
+            case 'listItem': return <li className={className}>{renderDiffContent()}</li>;
+            default: return <div className={className}>{renderDiffContent()}</div>;
+        }
     }
 
     // 3. Document/Container Nodes
@@ -116,19 +123,23 @@ const SideBySideViewer = ({ oldVersion, newVersion, onClose }) => {
                 </div>
 
                 <div className="sbs-body">
-                    {/* Left Panel: Old Version rendering exactly as it was */}
+                    {/* Left Panel: Old Version */}
                     <div className="sbs-panel sbs-old-panel">
                         <div className="sbs-panel-title">Original ({oldVersion.id})</div>
                         <div className="sbs-content tiptap read-only">
-                            <DiffNodeRenderer node={oldVersion.json} />
+                            {oldVersion.json ? <DiffNodeRenderer node={oldVersion.json} /> : <p>No content in original version.</p>}
                         </div>
                     </div>
 
-                    {/* Right Panel: New Version heavily annotated with diffs */}
+                    {/* Right Panel: Changes */}
                     <div className="sbs-panel sbs-diff-panel">
                         <div className="sbs-panel-title">Changes ({newVersion.id})</div>
                         <div className="sbs-content tiptap read-only">
-                            {diffAst && <DiffNodeRenderer node={diffAst} />}
+                            {diffAst && diffAst.content?.length > 0 ? (
+                                <DiffNodeRenderer node={diffAst} />
+                            ) : (
+                                <p className="no-changes">No changes detected between these versions.</p>
+                            )}
                         </div>
                     </div>
                 </div>
